@@ -1,0 +1,25 @@
+{
+    "combined_tool": {
+        "project_dir": "C:/Python_W_new/Backup_and_build",
+        "entry_script": "C:/Python_W_new/Backup_and_build/build_combined_gui.py",
+        "app_name": "Build & Backup Tool",
+        "build_mode": "Onefile",
+        "windowed": true,
+        "spec_file": "C:/Python_W_new/Backup_and_build\\Build & Backup Tool.onefile.spec",
+        "build_type": "Onefile",
+        "output_dir": "C:/Python_W_new/Builds/Build & Backup Tool",
+        "clean_build": true,
+        "console_mode": false,
+        "upx_compression": false,
+        "icon_path": "C:/Python_W_new/MKV_App/icons/icon-console.ico",
+        "python_exe": "C:/Python_W_new/Backup_and_build/.venv/Scripts/python.exe",
+        "change_description": "aanpassing window aan schermgroote en positie"
+    },
+    "backup_tab": {
+        "backup_dir": "C:/Python_W_new/Backups/Backup_and_build",
+        "include_venv": false,
+        "include_pycache": false,
+        "include_builds": false,
+        "backup_after_build": true
+    }
+}
