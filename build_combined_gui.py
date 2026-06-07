@@ -50,7 +50,6 @@ class BuildCombinedGUI(ctk.CTk):
             self.app_dir = os.path.dirname(sys.executable)
         else:
             self.app_dir = os.path.dirname(os.path.abspath(__file__))
-        self.settings_file = os.path.join(self.app_dir, "build_backup_cfg.json")
 
         # ── shared
         self.project_dir = ctk.StringVar(value=os.path.dirname(self.app_dir))
@@ -114,55 +113,9 @@ class BuildCombinedGUI(ctk.CTk):
     # ──────────────────────────────────────────────────────────────
     # Settings
     # ──────────────────────────────────────────────────────────────
-    def load_settings(self):
-        try:
-            if not os.path.exists(self.settings_file):
-                self.save_settings()
-                return
-            with open(self.settings_file, "r", encoding="utf-8") as f:
-                settings = json.load(f)
-            s = settings.get("combined_tool", {}) if isinstance(settings, dict) else {}
-            if s.get("project_dir"):      self.project_dir.set(s["project_dir"])
-            if s.get("entry_script"):     self.entry_script.set(s["entry_script"])
-            if s.get("app_name"):         self.app_name.set(s["app_name"])
-            saved_mode = s.get("build_mode")
-            saved_type = s.get("build_type")
-            if saved_mode in ("Onefile", "Onedir"):
-                self.build_mode.set(saved_mode)
-            if "windowed" in s:           self.windowed.set(bool(s["windowed"]))
-            if s.get("spec_file"):        self.spec_file.set(s["spec_file"])
-            if saved_type:                 self.build_type.set(saved_type)
-            preferred_mode = self._sync_build_selection(preferred=saved_type or saved_mode, spec_path=self.spec_file.get())
-            if preferred_mode in ("Onefile", "Onedir"):
-                preferred_spec = self._find_spec_for_type(self.project_dir.get().strip(), preferred_mode)
-                if preferred_spec:
-                    self.spec_file.set(preferred_spec)
-            if s.get("output_dir"):       self.output_dir.set(s["output_dir"])
-            if "clean_build" in s:        self.clean_build.set(bool(s["clean_build"]))
-            if "console_mode" in s:       self.console_mode.set(bool(s["console_mode"]))
-            if "upx_compression" in s:    self.upx_compression.set(bool(s["upx_compression"]))
-            if s.get("icon_path"):        self.icon_path.set(s["icon_path"])
-            if s.get("python_exe"):        self.python_exe.set(s["python_exe"])
-            if s.get("change_description"): self.change_description.set(s["change_description"])
-            # backup
-            b = settings.get("backup_tab", {})
-            if b.get("backup_dir"):      self.backup_dir.set(b["backup_dir"])
-            if "include_venv" in b:      self.include_venv.set(bool(b["include_venv"]))
-            if "include_pycache" in b:   self.include_pycache.set(bool(b["include_pycache"]))
-            if "include_builds" in b:    self.include_builds.set(bool(b["include_builds"]))
-            if "backup_after_build" in b: self.backup_after_build.set(bool(b["backup_after_build"]))
-        except Exception as exc:
-            print(f"Error loading combined tool settings: {exc}")
-
-    def save_settings(self):
-        try:
-            settings = {}
-            if os.path.exists(self.settings_file):
-                with open(self.settings_file, "r", encoding="utf-8") as f:
-                    settings = json.load(f)
-            if not isinstance(settings, dict):
-                settings = {}
-            settings["combined_tool"] = {
+    def _collect_settings_payload(self):
+        return {
+            "combined_tool": {
                 "project_dir":    self.project_dir.get(),
                 "entry_script":   self.entry_script.get(),
                 "app_name":       self.app_name.get(),
@@ -177,18 +130,141 @@ class BuildCombinedGUI(ctk.CTk):
                 "icon_path":      self.icon_path.get(),
                 "python_exe":          self.python_exe.get(),
                 "change_description":  self.change_description.get(),
-            }
-            settings["backup_tab"] = {
+            },
+            "backup_tab": {
                 "backup_dir":         self.backup_dir.get(),
                 "include_venv":       self.include_venv.get(),
                 "include_pycache":    self.include_pycache.get(),
                 "include_builds":     self.include_builds.get(),
                 "backup_after_build": self.backup_after_build.get(),
-            }
-            with open(self.settings_file, "w", encoding="utf-8") as f:
+            },
+        }
+
+    def _project_settings_path(self, project_dir=None):
+        project = (project_dir or self.project_dir.get() or "").strip()
+        if not project or not os.path.isdir(project):
+            return None
+        return os.path.join(project, "build_backup_cfg.json")
+
+    def _apply_settings_data(self, settings, allow_project_override=True):
+        s = settings.get("combined_tool", {}) if isinstance(settings, dict) else {}
+        if allow_project_override and s.get("project_dir"):
+            self.project_dir.set(s["project_dir"])
+        if s.get("entry_script"):
+            self.entry_script.set(s["entry_script"])
+        if s.get("app_name"):
+            self.app_name.set(s["app_name"])
+        saved_mode = s.get("build_mode")
+        saved_type = s.get("build_type")
+        if saved_mode in ("Onefile", "Onedir"):
+            self.build_mode.set(saved_mode)
+        if "windowed" in s:
+            self.windowed.set(bool(s["windowed"]))
+        if s.get("spec_file"):
+            self.spec_file.set(s["spec_file"])
+        if saved_type:
+            self.build_type.set(saved_type)
+        preferred_mode = self._sync_build_selection(preferred=saved_type or saved_mode, spec_path=self.spec_file.get())
+        if preferred_mode in ("Onefile", "Onedir"):
+            preferred_spec = self._find_spec_for_type(self.project_dir.get().strip(), preferred_mode)
+            if preferred_spec:
+                self.spec_file.set(preferred_spec)
+        if s.get("output_dir"):
+            self.output_dir.set(s["output_dir"])
+        if "clean_build" in s:
+            self.clean_build.set(bool(s["clean_build"]))
+        if "console_mode" in s:
+            self.console_mode.set(bool(s["console_mode"]))
+        if "upx_compression" in s:
+            self.upx_compression.set(bool(s["upx_compression"]))
+        if s.get("icon_path"):
+            self.icon_path.set(s["icon_path"])
+        if s.get("python_exe"):
+            self.python_exe.set(s["python_exe"])
+        if s.get("change_description"):
+            self.change_description.set(s["change_description"])
+        b = settings.get("backup_tab", {})
+        if b.get("backup_dir"):
+            self.backup_dir.set(b["backup_dir"])
+        if "include_venv" in b:
+            self.include_venv.set(bool(b["include_venv"]))
+        if "include_pycache" in b:
+            self.include_pycache.set(bool(b["include_pycache"]))
+        if "include_builds" in b:
+            self.include_builds.set(bool(b["include_builds"]))
+        if "backup_after_build" in b:
+            self.backup_after_build.set(bool(b["backup_after_build"]))
+
+    def load_settings(self, settings_path=None, allow_project_override=True):
+        target_file = settings_path or self._project_settings_path()
+        try:
+            if not target_file or not os.path.exists(target_file):
+                if settings_path is None:
+                    self.save_settings()
+                return False
+            with open(target_file, "r", encoding="utf-8") as f:
+                settings = json.load(f)
+            self._apply_settings_data(settings, allow_project_override=allow_project_override)
+            return True
+        except Exception as exc:
+            print(f"Error loading combined tool settings: {exc}")
+            return False
+
+    def save_settings(self):
+        try:
+            target_file = self._project_settings_path()
+            if not target_file:
+                return False
+            settings = self._collect_settings_payload()
+            with open(target_file, "w", encoding="utf-8") as f:
                 json.dump(settings, f, indent=4, ensure_ascii=False)
+            return True
         except Exception as exc:
             print(f"Error saving combined tool settings: {exc}")
+            return False
+
+    def save_project_settings(self, project_dir=None):
+        try:
+            target_file = self._project_settings_path(project_dir)
+            if not target_file:
+                return False
+            settings = self._collect_settings_payload()
+            with open(target_file, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=4, ensure_ascii=False)
+            return True
+        except Exception as exc:
+            print(f"Error saving project settings: {exc}")
+            return False
+
+    def load_project_settings(self, project_dir=None):
+        target_file = self._project_settings_path(project_dir)
+        if not target_file or not os.path.exists(target_file):
+            return False
+        return self.load_settings(settings_path=target_file, allow_project_override=False)
+
+    def _reset_fields_for_new_project(self):
+        """Reset all UI fields except the selected project folder."""
+        self.entry_script.set("")
+        self.app_name.set("")
+        self.spec_file.set("")
+        self.build_mode.set("Onefile")
+        self.build_type.set("Auto (from spec)")
+        self.windowed.set(True)
+
+        self.output_dir.set("")
+        self.clean_build.set(True)
+        self.console_mode.set(False)
+        self.upx_compression.set(False)
+        self.icon_path.set("")
+        self.python_exe.set("")
+
+        self.backup_dir.set("")
+        self.include_venv.set(False)
+        self.include_pycache.set(False)
+        self.include_builds.set(False)
+        self.backup_after_build.set(True)
+
+        self.change_description.set("")
 
     # ──────────────────────────────────────────────────────────────
     # Widgets
@@ -294,13 +370,6 @@ class BuildCombinedGUI(ctk.CTk):
             side="left", fill="x", expand=True, padx=(0, 6)
         )
         ctk.CTkButton(bkdr, text="Browse...", width=100, command=self.browse_backup_dir).pack(side="right")
-        bkbr = ctk.CTkFrame(bks, fg_color="transparent")
-        bkbr.pack(fill="x", padx=12, pady=(0, 4))
-        ctk.CTkLabel(bkbr, text="Build Folder:", width=120, anchor="w").pack(side="left", padx=(0, 6))
-        ctk.CTkEntry(bkbr, textvariable=self.output_dir, height=30).pack(
-            side="left", fill="x", expand=True, padx=(0, 6)
-        )
-        ctk.CTkButton(bkbr, text="Browse...", width=100, command=self.browse_output).pack(side="right")
         bkopt = ctk.CTkFrame(bks, fg_color="transparent")
         bkopt.pack(fill="x", padx=12, pady=(0, 8))
         ctk.CTkCheckBox(bkopt, text="Include .venv", variable=self.include_venv).pack(side="left", padx=(0, 14))
@@ -327,7 +396,7 @@ class BuildCombinedGUI(ctk.CTk):
         btn_row.pack(fill="x", pady=(0, 4))
         self.build_btn = ctk.CTkButton(
             btn_row,
-            text="🚀 Bouwen",
+            text="🚀 Build",
             height=46,
             font=ctk.CTkFont(size=15, weight="bold"),
             command=self.start_build,
@@ -564,8 +633,17 @@ class BuildCombinedGUI(ctk.CTk):
         d = filedialog.askdirectory(title="Select Project Folder", initialdir=self.project_dir.get())
         if d:
             self.project_dir.set(d)
-            self._auto_fill_entry_script()
-            self._auto_pick_spec()
+            project_cfg = self._project_settings_path(d)
+            if self.load_project_settings(d):
+                self.log(f"ℹ️ Project cfg geladen: {project_cfg}")
+                self._auto_fill_entry_script()
+                self._auto_pick_spec()
+            else:
+                self._reset_fields_for_new_project()
+                if self.save_project_settings(d):
+                    self.log(f"ℹ️ Geen project cfg gevonden; nieuwe cfg aangemaakt: {project_cfg}")
+                else:
+                    self.log(f"ℹ️ Geen project cfg gevonden in {d}; standaard instellingen actief.")
             self.save_settings()
 
     def browse_entry_script(self):
@@ -891,7 +969,7 @@ class BuildCombinedGUI(ctk.CTk):
         if busy and label:
             self.build_btn.configure(text=label)
         elif not busy:
-            self.build_btn.configure(text="🚀 Bouwen")
+            self.build_btn.configure(text="🚀 Build")
             self._restore_active_btn()
 
     def _animate_auto(self):
@@ -1092,7 +1170,8 @@ class BuildCombinedGUI(ctk.CTk):
             return
 
         self._cancel_requested = False
-        self.save_settings()
+        if self.save_settings():
+            self.log(f"ℹ️ Project cfg opgeslagen: {self._project_settings_path(project)}")
         self._session_log_lines = []
         self._build_log_file_path = None
         self.clear_log()
@@ -1186,10 +1265,12 @@ class BuildCombinedGUI(ctk.CTk):
         elif effective_upx:
             self.log(f"✅ UPX found: {upx_path}")
 
+        # Some specs contain multiple upx= assignments (for example in EXE and COLLECT).
+        # Update all of them so the UI setting is applied consistently.
         updated, n_upx = re.subn(
             r"(?m)^\s*upx\s*=\s*(True|False)\s*,\s*$",
             f"    upx={effective_upx},",
-            updated, count=1,
+            updated,
         )
         updated, n_console = re.subn(
             r"(?m)^\s*console\s*=\s*(True|False)\s*,\s*$",
@@ -1542,7 +1623,7 @@ class BuildCombinedGUI(ctk.CTk):
         self.after(
             2000,
             lambda: self.build_btn.configure(
-                text="🚀 Bouwen",
+                text="🚀 Build",
                 fg_color="#1f6aa5",
                 hover_color="#144870",
             ),
