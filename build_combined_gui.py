@@ -1530,13 +1530,40 @@ class BuildCombinedGUI(ctk.CTk):
         with open(self._build_log_file_path, "w", encoding="utf-8") as f:
             f.writelines(self._session_log_lines)
 
+    def _ensure_pyinstaller(self, python_exe):
+        """PyInstaller must run with the target project's Python so it can see that
+        project's dependencies. Auto-install it there if missing, instead of failing."""
+        chk = subprocess.run(
+            [python_exe, "-c", "import PyInstaller"],
+            capture_output=True, stdin=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        if chk.returncode == 0:
+            return
+        self.log(f"⚠️ PyInstaller niet gevonden in {python_exe}. Installeren...")
+        install = subprocess.run(
+            [python_exe, "-m", "pip", "install", "pyinstaller"],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+        output = ((install.stdout or "") + (install.stderr or "")).strip()
+        for line in output.splitlines()[-15:]:
+            if line.strip():
+                self.log(line)
+        if install.returncode != 0:
+            raise RuntimeError(f"Kon PyInstaller niet installeren in {python_exe} (code {install.returncode})")
+        self.log("✅ PyInstaller geïnstalleerd")
+
     def _build_worker(self, project, spec, out_root):
         original_spec = None
         try:
             original_spec = self._apply_spec_overrides(spec)
             self.log(f"⚙️ Options: console={self._effective_console} | upx={self._effective_upx} | icon={self._effective_icon}")
 
-            cmd = [self._get_python(), "-m", "PyInstaller", "--noconfirm"]
+            target_python = self._get_python()
+            self._ensure_pyinstaller(target_python)
+
+            cmd = [target_python, "-m", "PyInstaller", "--noconfirm"]
             if self.clean_build.get():
                 cmd.append("--clean")
             cmd.append(spec)
